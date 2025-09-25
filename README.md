@@ -1,5 +1,9 @@
 # 💫 About Me:
-Hi! I’m a Computer Science student at ISAMM<br> (Higher Institute of Art and Multimedia).  <br>I’m passionate about programming and <br>constantly working on improving my skills,<br> especially in problem solving.<br>
+Hi! I’m a second-year Big Data student in Computer Science at ISAMM<br>
+(Higher Institute of Art and Multimedia).<br>
+I’m passionate about programming and constantly honing my skills,<br>
+especially in problem solving.<br>
+I’m also a pro typer, which helps me code faster and work more efficiently.<br>
 
 
 
