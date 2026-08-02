@@ -212,8 +212,8 @@ def get_total_loc(repos, user_id):
 # ---------------------------------------------------------------------------
 
 FONT = "SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace"
-BG = "#0a0e14"
-CYAN = "#56b6c2"
+BG = "#0a0a0f"        # matches the ascii-art background exactly, so the two blend
+ACCENT = "#ff2b9d"     # sampled from the ascii art's dominant pink
 WHITE = "#e6e6e6"
 GRAY = "#5c6370"
 GREEN = "#98c379"
@@ -225,7 +225,7 @@ def dotted(label, value, color=WHITE):
     pad = max(1, LABEL_COL - len(label))
     dots = "." * pad
     return (
-        f'<tspan fill="{CYAN}">{label}</tspan>'
+        f'<tspan fill="{ACCENT}">{label}</tspan>'
         f'<tspan fill="{GRAY}"> {dots} </tspan>'
         f'<tspan fill="{color}">{value}</tspan>'
     )
@@ -281,37 +281,47 @@ def build_svg(stats, art_b64, art_w, art_h):
     )
     lines.append(("row", dotted("Lines of Code", "") + loc_str))
 
-    text_h = len(lines) * line_h + 40
-    canvas_h = max(text_h, art_h * (380 / art_w) + 40)
-    art_disp_w = 380
-    art_disp_h = art_h * (art_disp_w / art_w)
+    margin = 30
+    text_h = len(lines) * line_h
+    canvas_h = text_h + margin * 2
+
+    # Scale the art to the full content height (not a fixed width), so its
+    # proportions match the height of the text column instead of leaving
+    # dead space above/below it.
+    art_disp_h = canvas_h - margin * 2
+    art_disp_w = art_w * (art_disp_h / art_h)
+    art_x = margin
+    art_y = margin
+
+    text_x = art_x + art_disp_w + 50
+    canvas_w = text_x + 560
 
     svg_lines = []
-    y = 40
+    y = margin + 16
     for kind, content in lines:
         if kind == "blank":
             y += line_h
             continue
         if kind == "header":
             svg_lines.append(
-                f'<text x="{art_disp_w + 40}" y="{y}" font-family="{FONT}" '
+                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
                 f'font-size="16" font-weight="bold" fill="{WHITE}">{content}</text>'
             )
         elif kind == "rule":
             svg_lines.append(
-                f'<text x="{art_disp_w + 40}" y="{y}" font-family="{FONT}" '
+                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
                 f'font-size="16" fill="{GRAY}">{content}</text>'
             )
         else:
             svg_lines.append(
-                f'<text x="{art_disp_w + 40}" y="{y}" font-family="{FONT}" '
+                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
                 f'font-size="15">{content}</text>'
             )
         y += line_h
 
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{art_disp_w + 620}" height="{canvas_h:.0f}">
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w:.0f}" height="{canvas_h:.0f}">
   <rect width="100%" height="100%" fill="{BG}" rx="10"/>
-  <image x="20" y="20" width="{art_disp_w:.0f}" height="{art_disp_h:.0f}"
+  <image x="{art_x}" y="{art_y}" width="{art_disp_w:.0f}" height="{art_disp_h:.0f}"
          href="data:image/png;base64,{art_b64}"/>
   {"".join(svg_lines)}
 </svg>'''
