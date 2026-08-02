@@ -224,28 +224,31 @@ LABEL_COL = 34   # dotted line target column (characters)
 def dotted(label, value, color=WHITE):
     pad = max(1, LABEL_COL - len(label))
     dots = "." * pad
-    return (
+    plain_len = len(label) + 1 + pad + 1 + len(value)
+    markup = (
         f'<tspan fill="{ACCENT}">{label}</tspan>'
         f'<tspan fill="{GRAY}"> {dots} </tspan>'
         f'<tspan fill="{color}">{value}</tspan>'
     )
+    return markup, plain_len
 
 
 def build_svg(stats, art_b64, art_w, art_h):
     line_h = 22
-    lines = []
+    lines = []   # (kind, markup, plain_len)
 
     def header(text):
-        lines.append(("header", text))
+        lines.append(("header", text, len(text)))
 
     def row(label, value, color=WHITE):
-        lines.append(("row", dotted(label, value, color)))
+        markup, plain_len = dotted(label, value, color)
+        lines.append(("row", markup, plain_len))
 
     def blank():
-        lines.append(("blank", ""))
+        lines.append(("blank", "", 0))
 
     header(f"{USER_NAME}@github")
-    lines.append(("rule", "-" * 44))
+    lines.append(("rule", "-" * 44, 44))
     row("OS", stats["os"])
     row("Host", stats["host"])
     row("Kernel", stats["kernel"])
@@ -260,7 +263,7 @@ def build_svg(stats, art_b64, art_w, art_h):
     row("Tools.Design", stats["design"])
     blank()
     header("Contact")
-    lines.append(("rule", "-" * 44))
+    lines.append(("rule", "-" * 44, 44))
     row("Email", stats["email"])
     row("LinkedIn", stats["linkedin"])
     row("YouTube", stats["youtube"])
@@ -269,17 +272,23 @@ def build_svg(stats, art_b64, art_w, art_h):
     row("MonkeyType", stats["monkeytype"])
     blank()
     header("GitHub Stats")
-    lines.append(("rule", "-" * 44))
+    lines.append(("rule", "-" * 44, 44))
     row("Repos", f'{stats["repos"]} {{Contributed: {stats["contributed"]}}}')
     row("Stars", str(stats["stars"]))
     row("Commits", f'{stats["commits"]:,}')
     row("Followers", str(stats["followers"]))
-    loc_str = (
+    loc_value_plain = (
         f'{stats["loc_add"] - stats["loc_del"]:,} '
-        f'(<tspan fill="{GREEN}">{stats["loc_add"]:,}++</tspan>, '
-        f'<tspan fill="{RED}">{stats["loc_del"]:,}--</tspan>)'
+        f'({stats["loc_add"]:,}++, {stats["loc_del"]:,}--)'
     )
-    lines.append(("row", dotted("Lines of Code", "") + loc_str))
+    loc_markup, loc_plain_len = dotted("Lines of Code", loc_value_plain)
+    # re-color the ++/-- portions after the fact
+    loc_markup = loc_markup.replace(
+        f'{stats["loc_add"]:,}++', f'<tspan fill="{GREEN}">{stats["loc_add"]:,}++</tspan>'
+    ).replace(
+        f'{stats["loc_del"]:,}--', f'<tspan fill="{RED}">{stats["loc_del"]:,}--</tspan>'
+    )
+    lines.append(("row", loc_markup, loc_plain_len))
 
     margin = 30
     text_h = len(lines) * line_h
@@ -294,11 +303,13 @@ def build_svg(stats, art_b64, art_w, art_h):
     art_y = margin
 
     text_x = art_x + art_disp_w + 50
-    canvas_w = text_x + 560
+    char_w = 9.6  # approx monospace advance width at this font size
+    max_chars = max((plain_len for _, _, plain_len in lines), default=0)
+    canvas_w = text_x + max_chars * char_w + margin
 
     svg_lines = []
     y = margin + 16
-    for kind, content in lines:
+    for kind, content, _ in lines:
         if kind == "blank":
             y += line_h
             continue
