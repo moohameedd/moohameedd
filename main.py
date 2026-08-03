@@ -213,7 +213,7 @@ def get_total_loc(repos, user_id):
 
 FONT = "SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace"
 BG = "#0a0a0f"        # matches the ascii-art background exactly, so the two blend
-ACCENT = "#ff2b9d"     # sampled from the ascii art's dominant pink
+ACCENT = "#e6e6e6"     # plain white labels, matching the reference style (no color accent)
 WHITE = "#e6e6e6"
 GRAY = "#5c6370"
 GREEN = "#98c379"
@@ -234,7 +234,7 @@ def dotted(label, value, color=WHITE):
 
 
 def build_svg(stats, art_b64, art_w, art_h):
-    line_h = 22
+    line_h = 30
     lines = []   # (kind, markup, plain_len)
 
     def header(text):
@@ -291,24 +291,26 @@ def build_svg(stats, art_b64, art_w, art_h):
     lines.append(("row", loc_markup, loc_plain_len))
 
     margin = 30
+    art_margin = 12   # tighter left/top/bottom margin so the art hugs the edge
     text_h = len(lines) * line_h
     canvas_h = text_h + margin * 2
 
-    # Scale the art to the full content height (not a fixed width), so its
-    # proportions match the height of the text column instead of leaving
-    # dead space above/below it.
-    art_disp_h = canvas_h - margin * 2
+    # Scale the art a bit smaller than the full content height, and center
+    # it vertically, so it reads as a companion graphic rather than
+    # dominating the block.
+    max_art_h = canvas_h - art_margin * 2
+    art_disp_h = max_art_h * 0.82
     art_disp_w = art_w * (art_disp_h / art_h)
-    art_x = margin
-    art_y = margin
+    art_x = art_margin
+    art_y = art_margin + (max_art_h - art_disp_h) / 2
 
-    text_x = art_x + art_disp_w + 50
-    char_w = 9.6  # approx monospace advance width at this font size
+    text_x = art_x + art_disp_w + 45
+    char_w = 12.2  # approx monospace advance width at this font size
     max_chars = max((plain_len for _, _, plain_len in lines), default=0)
     canvas_w = text_x + max_chars * char_w + margin
 
     svg_lines = []
-    y = margin + 16
+    y = margin + 20
     for kind, content, _ in lines:
         if kind == "blank":
             y += line_h
@@ -316,17 +318,17 @@ def build_svg(stats, art_b64, art_w, art_h):
         if kind == "header":
             svg_lines.append(
                 f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="16" font-weight="bold" fill="{WHITE}">{content}</text>'
+                f'font-size="21" font-weight="bold" fill="{WHITE}">{content}</text>'
             )
         elif kind == "rule":
             svg_lines.append(
                 f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="16" fill="{GRAY}">{content}</text>'
+                f'font-size="20" fill="{GRAY}">{content}</text>'
             )
         else:
             svg_lines.append(
                 f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="15">{content}</text>'
+                f'font-size="20">{content}</text>'
             )
         y += line_h
 
