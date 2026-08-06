@@ -1,0 +1,40 @@
+name: Update GitHub stats SVG
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # every day at midnight UTC
+  workflow_dispatch:        # also allow manual runs from the Actions tab
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # needed to push stats.svg back to the repo
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate stats.svg
+        env:
+          USER_NAME: moohameedd
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: python main.py
+
+      - name: Commit and push stats.svg
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add stats.svg cache/loc_cache.json || true
+          git diff --cached --quiet || git commit -m "chore: update stats.svg [skip ci]"
+          git push

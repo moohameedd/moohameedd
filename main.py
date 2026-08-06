@@ -127,9 +127,6 @@ def get_commit_count(login, created_at):
 
 
 def get_loc_for_repo(owner, name, user_id, cache):
-    """Sum additions/deletions on the default branch, authored by user_id.
-    Uses a local cache keyed on the repo's latest commit oid to skip repos
-    that haven't changed since the last run."""
     key = f"{owner}/{name}"
     query_head = """
     query($owner: String!, $name: String!) {
@@ -142,7 +139,7 @@ def get_loc_for_repo(owner, name, user_id, cache):
         d = gql(query_head, {"owner": owner, "name": name})["repository"]
         ref = d["defaultBranchRef"]
         if ref is None:
-            return 0, 0  # empty repo, no default branch
+            return 0, 0
         head_oid = ref["target"]["oid"]
     except Exception:
         return 0, 0
@@ -211,133 +208,149 @@ def get_total_loc(repos, user_id):
 # SVG rendering
 # ---------------------------------------------------------------------------
 
-FONT = "SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace"
-BG = "#0a0a0f"        # matches the ascii-art background exactly, so the two blend
-ACCENT = "#e6e6e6"     # plain white labels, matching the reference style (no color accent)
-WHITE = "#e6e6e6"
-GRAY = "#5c6370"
-GREEN = "#98c379"
-RED = "#e06c75"
-LABEL_COL = 34   # dotted line target column (characters)
+FONT      = "SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace"
+BG        = "#0a0a0a"     # same near-black as the ascii-art background
+WHITE     = "#e8e8e8"     # primary text  — bright white
+ORANGE    = "#d4845a"     # accent colour — sampled from the ASCII art warm tones
+GRAY      = "#606060"     # dots / rules
+GREEN     = "#98c379"     # loc ++
+RED       = "#e06c75"     # loc --
+LABEL_COL = 26            # number of dot-fill chars per row
+
+# ── font sizes (bigger than before) ─────────────────────────────────────────
+FS_HEADER = 26   # section headers  e.g. "moohameedd@github"
+FS_RULE   = 24   # separator line   "------..."
+FS_ROW    = 24   # data rows
+LINE_H    = 36   # vertical spacing between lines (px)
+CHAR_W    = 14.5 # approx advance width of the monospace font at FS_ROW
 
 
-def dotted(label, value, color=WHITE):
-    pad = max(1, LABEL_COL - len(label))
+def dotted(label, value, value_color=ORANGE):
+    """Return (svg-markup, plain-text-length) for one key....value row."""
+    pad  = max(1, LABEL_COL - len(label))
     dots = "." * pad
     plain_len = len(label) + 1 + pad + 1 + len(value)
     markup = (
-        f'<tspan fill="{ACCENT}">{label}</tspan>'
+        f'<tspan fill="{WHITE}">{label}</tspan>'
         f'<tspan fill="{GRAY}"> {dots} </tspan>'
-        f'<tspan fill="{color}">{value}</tspan>'
+        f'<tspan fill="{value_color}">{value}</tspan>'
     )
     return markup, plain_len
 
 
 def build_svg(stats, art_b64, art_w, art_h):
-    line_h = 30
-    lines = []   # (kind, markup, plain_len)
+    # ── build line list (NO blank() calls → no empty gaps) ──────────────────
+    lines = []   # each item: (kind, content, plain_len)
 
     def header(text):
         lines.append(("header", text, len(text)))
 
-    def row(label, value, color=WHITE):
+    def rule(n=44):
+        lines.append(("rule", "-" * n, n))
+
+    def row(label, value, color=ORANGE):
         markup, plain_len = dotted(label, value, color)
         lines.append(("row", markup, plain_len))
 
-    def blank():
-        lines.append(("blank", "", 0))
-
+    # ── neofetch block ───────────────────────────────────────────────────────
     header(f"{USER_NAME}@github")
-    lines.append(("rule", "-" * 44, 44))
-    row("OS", stats["os"])
-    row("Host", stats["host"])
+    rule()
+    row("OS",     stats["os"])
+    row("Host",   stats["host"])
     row("Kernel", stats["kernel"])
-    row("Shell", stats["shell"])
-    row("DE", stats["de"])
-    blank()
+    row("Shell",  stats["shell"])
+    row("DE",     stats["de"])
     row("Languages.Programming", stats["prog_langs"])
-    row("Languages.Web", stats["web_langs"])
-    row("Languages.ML", stats["ml_libs"])
-    blank()
-    row("Tools.IDE", stats["ide"])
-    row("Tools.Design", stats["design"])
-    blank()
+    row("Languages.Web",         stats["web_langs"])
+    row("Languages.ML",          stats["ml_libs"])
+    row("Tools.IDE",             stats["ide"])
+    row("Tools.Design",          stats["design"])
+
+    # ── Contact ──────────────────────────────────────────────────────────────
     header("Contact")
-    lines.append(("rule", "-" * 44, 44))
-    row("Email", stats["email"])
-    row("LinkedIn", stats["linkedin"])
-    row("YouTube", stats["youtube"])
-    row("LeetCode", stats["leetcode"])
+    rule()
+    row("Email",      stats["email"])
+    row("LinkedIn",   stats["linkedin"])
+    row("YouTube",    stats["youtube"])
+    row("LeetCode",   stats["leetcode"])
     row("Codeforces", stats["codeforces"])
     row("MonkeyType", stats["monkeytype"])
-    blank()
+
+    # ── GitHub Stats ─────────────────────────────────────────────────────────
     header("GitHub Stats")
-    lines.append(("rule", "-" * 44, 44))
-    row("Repos", f'{stats["repos"]} {{Contributed: {stats["contributed"]}}}')
-    row("Stars", str(stats["stars"]))
-    row("Commits", f'{stats["commits"]:,}')
+    rule()
+    row("Repos",     f'{stats["repos"]} {{Contributed: {stats["contributed"]}}}')
+    row("Stars",     str(stats["stars"]))
+    row("Commits",   f'{stats["commits"]:,}')
     row("Followers", str(stats["followers"]))
-    loc_value_plain = (
+
+    loc_plain = (
         f'{stats["loc_add"] - stats["loc_del"]:,} '
         f'({stats["loc_add"]:,}++, {stats["loc_del"]:,}--)'
     )
-    loc_markup, loc_plain_len = dotted("Lines of Code", loc_value_plain)
-    # re-color the ++/-- portions after the fact
-    loc_markup = loc_markup.replace(
-        f'{stats["loc_add"]:,}++', f'<tspan fill="{GREEN}">{stats["loc_add"]:,}++</tspan>'
-    ).replace(
-        f'{stats["loc_del"]:,}--', f'<tspan fill="{RED}">{stats["loc_del"]:,}--</tspan>'
+    loc_markup, loc_plain_len = dotted("Lines of Code", loc_plain)
+    # colour the ++ and -- in green/red
+    loc_markup = (
+        loc_markup
+        .replace(f'{stats["loc_add"]:,}++',
+                 f'<tspan fill="{GREEN}">{stats["loc_add"]:,}++</tspan>')
+        .replace(f'{stats["loc_del"]:,}--',
+                 f'<tspan fill="{RED}">{stats["loc_del"]:,}--</tspan>')
     )
     lines.append(("row", loc_markup, loc_plain_len))
 
-    margin = 30
-    art_margin = 12   # tighter left/top/bottom margin so the art hugs the edge
-    text_h = len(lines) * line_h
+    # ── geometry ─────────────────────────────────────────────────────────────
+    margin     = 32
+    art_margin = 14
+
+    text_h   = len(lines) * LINE_H
     canvas_h = text_h + margin * 2
 
-    # Scale the art a bit smaller than the full content height, and center
-    # it vertically, so it reads as a companion graphic rather than
-    # dominating the block.
-    max_art_h = canvas_h - art_margin * 2
-    art_disp_h = max_art_h * 0.82
+    max_art_h  = canvas_h - art_margin * 2
+    art_disp_h = max_art_h            # fill the full height
     art_disp_w = art_w * (art_disp_h / art_h)
     art_x = art_margin
-    art_y = art_margin + (max_art_h - art_disp_h) / 2
+    art_y = art_margin
 
-    text_x = art_x + art_disp_w + 45
-    char_w = 12.2  # approx monospace advance width at this font size
-    max_chars = max((plain_len for _, _, plain_len in lines), default=0)
-    canvas_w = text_x + max_chars * char_w + margin
+    text_x    = art_x + art_disp_w + 50
+    max_chars = max((pl for _, _, pl in lines), default=0)
+    canvas_w  = text_x + max_chars * CHAR_W + margin
 
+    # ── SVG text elements ────────────────────────────────────────────────────
     svg_lines = []
-    y = margin + 20
+    y = margin + LINE_H - 6   # first baseline
+
     for kind, content, _ in lines:
-        if kind == "blank":
-            y += line_h
-            continue
         if kind == "header":
             svg_lines.append(
-                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="21" font-weight="bold" fill="{WHITE}">{content}</text>'
+                f'<text x="{text_x:.0f}" y="{y}" '
+                f'font-family="{FONT}" font-size="{FS_HEADER}" '
+                f'font-weight="bold" fill="{WHITE}">{content}</text>'
             )
         elif kind == "rule":
             svg_lines.append(
-                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="20" fill="{GRAY}">{content}</text>'
+                f'<text x="{text_x:.0f}" y="{y}" '
+                f'font-family="{FONT}" font-size="{FS_RULE}" '
+                f'fill="{GRAY}">{content}</text>'
             )
-        else:
+        else:  # row
             svg_lines.append(
-                f'<text x="{text_x:.0f}" y="{y}" font-family="{FONT}" '
-                f'font-size="20">{content}</text>'
+                f'<text x="{text_x:.0f}" y="{y}" '
+                f'font-family="{FONT}" font-size="{FS_ROW}">'
+                f'{content}</text>'
             )
-        y += line_h
+        y += LINE_H
 
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w:.0f}" height="{canvas_h:.0f}">
-  <rect width="100%" height="100%" fill="{BG}" rx="10"/>
-  <image x="{art_x}" y="{art_y}" width="{art_disp_w:.0f}" height="{art_disp_h:.0f}"
-         href="data:image/png;base64,{art_b64}"/>
-  {"".join(svg_lines)}
-</svg>'''
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'width="{canvas_w:.0f}" height="{canvas_h:.0f}">\n'
+        f'  <rect width="100%" height="100%" fill="{BG}" rx="10"/>\n'
+        f'  <image x="{art_x}" y="{art_y}" '
+        f'width="{art_disp_w:.0f}" height="{art_disp_h:.0f}"\n'
+        f'         href="data:image/png;base64,{art_b64}"/>\n'
+        + "\n".join(svg_lines)
+        + "\n</svg>"
+    )
     return svg
 
 
@@ -355,38 +368,39 @@ def main():
     loc_add, loc_del = get_total_loc(all_repos, user_id)
 
     stats = {
-        "os": "Ubuntu 24.04.4 LTS x86_64",
-        "host": "Thin GF63 12UCX",
-        "kernel": "7.0.0-28-generic",
-        "shell": "bash 5.2.21",
-        "de": "GNOME 46.0",
+        "os":         "Ubuntu 24.04.4 LTS x86_64",
+        "host":       "Thin GF63 12UCX",
+        "kernel":     "7.0.0-28-generic",
+        "shell":      "bash 5.2.21",
+        "de":         "GNOME 46.0",
         "prog_langs": "Python, Java, C, JavaScript, PHP",
-        "web_langs": "HTML, CSS, MySQL",
-        "ml_libs": "PyTorch, NumPy, Pandas, scikit-learn",
-        "ide": "VS Code, Android Studio",
-        "design": "Canva",
-        "email": "hama.ferchichi321@gmail.com",
-        "linkedin": "mohamed-ferchichi-5626b3330",
-        "youtube": "@moohameedd-y3r",
-        "leetcode": "moohameedd",
+        "web_langs":  "HTML, CSS, MySQL",
+        "ml_libs":    "PyTorch, NumPy, Pandas, scikit-learn",
+        "ide":        "VS Code, Android Studio",
+        "design":     "Canva",
+        "email":      "hama.ferchichi321@gmail.com",
+        "linkedin":   "mohamed-ferchichi-5626b3330",
+        "youtube":    "@moohameedd-y3r",
+        "leetcode":   "moohameedd",
         "codeforces": "moohameedd",
         "monkeytype": "mohamedferchichi",
-        "repos": repo_count,
-        "contributed": contributed_count,
-        "stars": stars,
-        "commits": commits,
-        "followers": followers,
-        "loc_add": loc_add,
-        "loc_del": loc_del,
+        "repos":      repo_count,
+        "contributed":contributed_count,
+        "stars":      stars,
+        "commits":    commits,
+        "followers":  followers,
+        "loc_add":    loc_add,
+        "loc_del":    loc_del,
     }
 
     with open("ascii-art.png", "rb") as f:
         art_b64 = base64.b64encode(f.read()).decode()
-    art_w, art_h = 1152, 1536
+    art_w, art_h = 1152, 1536   # exact dimensions of ascii-art.png
 
     svg = build_svg(stats, art_b64, art_w, art_h)
     with open("stats.svg", "w") as f:
         f.write(svg)
+    print("stats.svg written.")
 
 
 if __name__ == "__main__":
